@@ -11,6 +11,7 @@ import SearchPage from './pages/Search.tsx';
 import ListingDetail from './pages/ListingDetail.tsx';
 import CreateListing from './pages/CreateListing.tsx';
 import OwnerDashboard from './pages/OwnerDashboard.tsx';
+import TenantDashboard from './pages/TenantDashboard.tsx';
 import { Toaster } from './components/ui/sonner.tsx';
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
             <Route path="/annonce/:slug" element={<ListingDetail />} />
             <Route path="/mettre-en-location" element={<CreateListing />} />
             <Route path="/proprietaire" element={<OwnerDashboard />} />
+            <Route path="/mes-reservations" element={<TenantDashboard />} />
             {/* Add more routes here */}
           </Route>
         </Routes>

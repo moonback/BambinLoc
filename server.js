@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { requireAuth } from "./src/middleware/auth.ts";
 import { db } from "./src/db/index.ts";
-import { users, listings, categories, listingImages } from "./src/db/schema.ts";
+import { users, listings, categories, listingImages, bookings } from "./src/db/schema.ts";
 import { eq, desc } from "drizzle-orm";
 import * as dotenv from "dotenv";
 import path from "path";
@@ -81,6 +81,88 @@ app.get("/api/listings/:slug", async (req, res) => {
   } catch (error) {
     console.error("Failed to fetch listing:", error);
     res.status(500).json({ error: "Failed to fetch listing" });
+  }
+});
+app.get("/api/bookings/tenant", requireAuth, async (req, res) => {
+  try {
+    const user = await db.query.users.findFirst({ where: eq(users.uid, req.user.uid) });
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const result = await db.query.bookings.findMany({
+      where: eq(bookings.tenantId, user.id),
+      with: {
+        listing: {
+          with: {
+            images: true
+          }
+        },
+        owner: true
+      },
+      orderBy: [desc(bookings.createdAt)]
+    });
+    res.json(result);
+  } catch (error) {
+    console.error("Failed to fetch tenant bookings:", error);
+    res.status(500).json({ error: "Failed to fetch bookings" });
+  }
+});
+app.get("/api/bookings/owner", requireAuth, async (req, res) => {
+  try {
+    const user = await db.query.users.findFirst({ where: eq(users.uid, req.user.uid) });
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const result = await db.query.bookings.findMany({
+      where: eq(bookings.ownerId, user.id),
+      with: {
+        listing: {
+          with: {
+            images: true
+          }
+        },
+        tenant: true
+      },
+      orderBy: [desc(bookings.createdAt)]
+    });
+    res.json(result);
+  } catch (error) {
+    console.error("Failed to fetch owner bookings:", error);
+    res.status(500).json({ error: "Failed to fetch bookings" });
+  }
+});
+app.post("/api/bookings", requireAuth, async (req, res) => {
+  try {
+    const user = await db.query.users.findFirst({ where: eq(users.uid, req.user.uid) });
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const { listingId, startDate, endDate, totalPrice } = req.body;
+    const listing = await db.query.listings.findFirst({ where: eq(listings.id, listingId) });
+    if (!listing) return res.status(404).json({ error: "Listing not found" });
+    const result = await db.insert(bookings).values({
+      listingId,
+      tenantId: user.id,
+      ownerId: listing.ownerId,
+      startDate,
+      endDate,
+      totalPrice: totalPrice.toString(),
+      status: "PENDING"
+    }).returning();
+    res.json(result[0]);
+  } catch (error) {
+    console.error("Failed to create booking:", error);
+    res.status(500).json({ error: "Failed to create booking" });
+  }
+});
+app.patch("/api/bookings/:id/status", requireAuth, async (req, res) => {
+  try {
+    const user = await db.query.users.findFirst({ where: eq(users.uid, req.user.uid) });
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const { status } = req.body;
+    const bookingId = parseInt(req.params.id);
+    const booking = await db.query.bookings.findFirst({ where: eq(bookings.id, bookingId) });
+    if (!booking) return res.status(404).json({ error: "Booking not found" });
+    if (booking.ownerId !== user.id) return res.status(403).json({ error: "Unauthorized" });
+    const result = await db.update(bookings).set({ status }).where(eq(bookings.id, bookingId)).returning();
+    res.json(result[0]);
+  } catch (error) {
+    console.error("Failed to update booking status:", error);
+    res.status(500).json({ error: "Failed to update booking status" });
   }
 });
 if (process.env.NODE_ENV === "production") {

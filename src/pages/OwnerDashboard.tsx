@@ -2,11 +2,65 @@ import { useAuth } from '@/context/AuthContext.tsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { PlusCircle, Package, CalendarDays, MessageSquare, TrendingUp } from 'lucide-react';
+import { PlusCircle, Package, CalendarDays, MessageSquare, TrendingUp, CheckCircle, XCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { format, parseISO } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
 
 export default function OwnerDashboard() {
-  const { user, signInWithGoogle } = useAuth();
+  const { user, signInWithGoogle, getToken } = useAuth();
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchBookings = async () => {
+    if (!user) return;
+    try {
+      const token = await getToken();
+      const res = await fetch('/api/bookings/owner', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBookings(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch bookings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBookings();
+  }, [user]);
+
+  const handleStatusChange = async (bookingId: number, status: string) => {
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/bookings/${bookingId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status })
+      });
+      
+      if (res.ok) {
+        toast.success(`Réservation ${status === 'CONFIRMED' ? 'acceptée' : 'refusée'}`);
+        fetchBookings();
+      } else {
+        throw new Error('Erreur');
+      }
+    } catch (error) {
+      toast.error('Une erreur est survenue');
+    }
+  };
 
   if (!user) {
     return (
@@ -39,8 +93,10 @@ export default function OwnerDashboard() {
             <TrendingUp className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">120,00 €</div>
-            <p className="text-xs text-slate-500 mt-1">+20% par rapport au mois dernier</p>
+            <div className="text-2xl font-bold">
+              {bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'COMPLETED').reduce((acc, curr) => acc + parseFloat(curr.totalPrice), 0).toFixed(2)} €
+            </div>
+            <p className="text-xs text-slate-500 mt-1">Total généré sur la plateforme</p>
           </CardContent>
         </Card>
         <Card>
@@ -49,18 +105,22 @@ export default function OwnerDashboard() {
             <CalendarDays className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">2</div>
-            <p className="text-xs text-slate-500 mt-1">1 départ aujourd'hui</p>
+            <div className="text-2xl font-bold">
+              {bookings.filter(b => b.status === 'CONFIRMED').length}
+            </div>
+            <p className="text-xs text-slate-500 mt-1">À venir ou en cours</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Annonces actives</CardTitle>
+            <CardTitle className="text-sm font-medium">Demandes en attente</CardTitle>
             <Package className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">3</div>
-            <p className="text-xs text-slate-500 mt-1">0 en brouillon</p>
+            <div className="text-2xl font-bold">
+              {bookings.filter(b => b.status === 'PENDING').length}
+            </div>
+            <p className="text-xs text-slate-500 mt-1">À valider rapidement</p>
           </CardContent>
         </Card>
         <Card>
@@ -77,50 +137,65 @@ export default function OwnerDashboard() {
 
       <Tabs defaultValue="reservations" className="w-full">
         <TabsList className="mb-6">
-          <TabsTrigger value="reservations">Réservations (2)</TabsTrigger>
-          <TabsTrigger value="annonces">Mes annonces (3)</TabsTrigger>
+          <TabsTrigger value="reservations">Réservations ({bookings.length})</TabsTrigger>
+          <TabsTrigger value="annonces">Mes annonces</TabsTrigger>
         </TabsList>
         <TabsContent value="reservations" className="space-y-4">
           <Card>
             <CardContent className="p-0">
-              <div className="divide-y">
-                <div className="p-4 flex items-center justify-between hover:bg-slate-50">
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-xl bg-slate-100 overflow-hidden shrink-0">
-                      <img src="https://images.unsplash.com/photo-1522771930-78848d92871d?w=150&auto=format&fit=crop" className="w-full h-full object-cover" alt="" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-slate-900">Poussette Yoyo Babyzen</h4>
-                      <p className="text-sm text-slate-500">Loué par Sophie Martin</p>
-                      <p className="text-sm font-medium text-primary mt-1">Du 10 au 15 Août</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20 mb-2">
-                      Confirmée
-                    </span>
-                    <div className="font-semibold">60,00 €</div>
-                  </div>
+              {loading ? (
+                <div className="p-8 text-center text-slate-500">Chargement...</div>
+              ) : bookings.length === 0 ? (
+                <div className="p-12 text-center text-slate-500 flex flex-col items-center">
+                  <CalendarDays className="h-12 w-12 text-slate-300 mb-4" />
+                  Vous n'avez aucune réservation pour le moment.
                 </div>
-                <div className="p-4 flex items-center justify-between hover:bg-slate-50">
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-xl bg-slate-100 overflow-hidden shrink-0">
-                      <img src="https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?w=150&auto=format&fit=crop" className="w-full h-full object-cover" alt="" />
+              ) : (
+                <div className="divide-y">
+                  {bookings.map((booking) => (
+                    <div key={booking.id} className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
+                        <div className="w-20 h-20 rounded-xl bg-slate-100 overflow-hidden shrink-0">
+                          <img 
+                            src={booking.listing?.images?.[0]?.url || "https://images.unsplash.com/photo-1522771930-78848d92871d?w=150&auto=format&fit=crop"} 
+                            className="w-full h-full object-cover" 
+                            alt="" 
+                          />
+                        </div>
+                        <div>
+                          <Link to={`/annonce/${booking.listing?.slug}`} className="hover:underline">
+                            <h4 className="font-semibold text-slate-900 text-lg">{booking.listing?.title}</h4>
+                          </Link>
+                          <p className="text-sm text-slate-500">Loué à {booking.tenant?.firstName} {booking.tenant?.lastName}</p>
+                          <p className="text-sm font-medium text-primary mt-1">
+                            Du {format(parseISO(booking.startDate), 'dd MMM', { locale: fr })} au {format(parseISO(booking.endDate), 'dd MMM yyyy', { locale: fr })}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-4 sm:gap-2">
+                        <div className="text-right">
+                          {booking.status === 'PENDING' && <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">En attente</Badge>}
+                          {booking.status === 'CONFIRMED' && <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Confirmée</Badge>}
+                          {booking.status === 'CANCELLED' && <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">Annulée</Badge>}
+                          <div className="font-bold text-lg mt-1">{booking.totalPrice} €</div>
+                        </div>
+                        
+                        {booking.status === 'PENDING' && (
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => handleStatusChange(booking.id, 'CANCELLED')}>
+                              Refuser
+                            </Button>
+                            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => handleStatusChange(booking.id, 'CONFIRMED')}>
+                              Accepter
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-semibold text-slate-900">Draisienne Puky LR M</h4>
-                      <p className="text-sm text-slate-500">Loué par Marc Dubois</p>
-                      <p className="text-sm font-medium text-primary mt-1">Du 20 au 22 Août</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-800 ring-1 ring-inset ring-yellow-600/20 mb-2">
-                      En attente
-                    </span>
-                    <div className="font-semibold">15,00 €</div>
-                  </div>
+                  ))}
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

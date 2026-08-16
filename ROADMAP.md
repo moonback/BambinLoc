@@ -15,7 +15,7 @@ Ce document détaille les phases de développement de la marketplace BambinLoc, 
 - [x] Script de Seeding (données de test).
 
 ## 🚧 Phase 2 : Coeur de la Marketplace (Réservations & Paiements)
-- [ ] **Système de Réservation**
+- [x] **Système de Réservation**
   - Calendrier interactif avec gestion des dates indisponibles.
   - Workflow de validation (Demande de réservation -> Acceptation/Refus par le propriétaire).
 - [ ] **Intégration Stripe**
@@ -23,7 +23,7 @@ Ce document détaille les phases de développement de la marketplace BambinLoc, 
   - Gestion des cautions (empreinte bancaire).
   - Calcul dynamique et prélèvement de la commission plateforme.
   - Payouts (versements vers les propriétaires).
-- [ ] **Dashboard Locataire**
+- [x] **Dashboard Locataire**
   - Suivi des réservations passées et à venir.
   - Gestion des favoris.
 

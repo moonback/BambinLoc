@@ -1,16 +1,31 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { MapPin, Star, Calendar, ShieldCheck, Check, Info } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/context/AuthContext.tsx';
 import { toast } from 'sonner';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarUI } from '@/components/ui/calendar';
+import { format, differenceInDays } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 export default function ListingDetail() {
   const { slug } = useParams();
+  const navigate = useNavigate();
   const [listing, setListing] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const { user, signInWithGoogle } = useAuth();
+  const { user, signInWithGoogle, getToken } = useAuth();
+  
+  const [date, setDate] = useState<{
+    from: Date | undefined;
+    to: Date | undefined;
+  }>({
+    from: undefined,
+    to: undefined,
+  });
+
+  const [bookingLoading, setBookingLoading] = useState(false);
 
   useEffect(() => {
     fetch(`/api/listings/${slug}`)
@@ -20,7 +35,7 @@ export default function ListingDetail() {
       .finally(() => setLoading(false));
   }, [slug]);
 
-  const handleBooking = () => {
+  const handleBooking = async () => {
     if (!user) {
       toast('Vous devez être connecté pour réserver', {
         action: {
@@ -30,9 +45,45 @@ export default function ListingDetail() {
       });
       return;
     }
-    toast.success('Demande de réservation envoyée !');
-    // In a real app, this would redirect to a checkout flow
+
+    if (!date.from || !date.to) {
+      toast.error('Veuillez sélectionner vos dates de location');
+      return;
+    }
+
+    const days = differenceInDays(date.to, date.from) + 1;
+    const totalPrice = days * parseFloat(listing.dailyPrice);
+
+    setBookingLoading(true);
+    try {
+      const token = await getToken();
+      const response = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          listingId: listing.id,
+          startDate: format(date.from, 'yyyy-MM-dd'),
+          endDate: format(date.to, 'yyyy-MM-dd'),
+          totalPrice
+        })
+      });
+
+      if (!response.ok) throw new Error('Erreur lors de la réservation');
+
+      toast.success('Demande de réservation envoyée !');
+      navigate('/mes-reservations');
+    } catch (error) {
+      toast.error('Impossible de finaliser la réservation');
+    } finally {
+      setBookingLoading(false);
+    }
   };
+
+  const daysSelected = date.from && date.to ? Math.max(1, differenceInDays(date.to, date.from) + 1) : 0;
+  const computedPrice = daysSelected > 0 ? daysSelected * parseFloat(listing.dailyPrice || '0') : 0;
 
   if (loading) {
     return <div className="container mx-auto p-8 text-center">Chargement...</div>;
@@ -131,20 +182,62 @@ export default function ListingDetail() {
               </div>
 
               <div className="space-y-4 mb-6">
-                <div className="grid grid-cols-2 gap-2 border border-slate-300 rounded-xl p-1">
-                  <div className="p-3 border-r border-slate-300">
-                    <label className="block text-xs font-bold uppercase text-slate-900 mb-1">Départ</label>
-                    <div className="text-sm text-slate-500">Ajouter dates</div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <div className="grid grid-cols-2 gap-2 border border-slate-300 rounded-xl p-1 cursor-pointer hover:border-slate-400 transition-colors">
+                      <div className="p-3 border-r border-slate-300">
+                        <label className="block text-xs font-bold uppercase text-slate-900 mb-1 cursor-pointer">Départ</label>
+                        <div className="text-sm text-slate-600">
+                          {date.from ? format(date.from, 'dd MMM', { locale: fr }) : 'Ajouter dates'}
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        <label className="block text-xs font-bold uppercase text-slate-900 mb-1 cursor-pointer">Retour</label>
+                        <div className="text-sm text-slate-600">
+                          {date.to ? format(date.to, 'dd MMM', { locale: fr }) : 'Ajouter dates'}
+                        </div>
+                      </div>
+                    </div>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="end">
+                    <CalendarUI
+                      initialFocus
+                      mode="range"
+                      defaultMonth={date?.from}
+                      selected={date}
+                      onSelect={(range: any) => setDate(range)}
+                      numberOfMonths={2}
+                      locale={fr}
+                      disabled={(d) => d < new Date()}
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                {daysSelected > 0 && (
+                  <div className="space-y-2 text-sm text-slate-600">
+                    <div className="flex justify-between">
+                      <span>{listing.dailyPrice} € x {daysSelected} jours</span>
+                      <span>{computedPrice} €</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Frais de service (5%)</span>
+                      <span>{(computedPrice * 0.05).toFixed(2)} €</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-slate-900 pt-2 border-t">
+                      <span>Total</span>
+                      <span>{(computedPrice * 1.05).toFixed(2)} €</span>
+                    </div>
                   </div>
-                  <div className="p-3">
-                    <label className="block text-xs font-bold uppercase text-slate-900 mb-1">Retour</label>
-                    <div className="text-sm text-slate-500">Ajouter dates</div>
-                  </div>
-                </div>
+                )}
               </div>
 
-              <Button size="lg" className="w-full text-lg h-14 rounded-xl" onClick={handleBooking}>
-                Réserver
+              <Button 
+                size="lg" 
+                className="w-full text-lg h-14 rounded-xl" 
+                onClick={handleBooking}
+                disabled={bookingLoading}
+              >
+                {bookingLoading ? 'Réservation...' : 'Réserver'}
               </Button>
 
               <div className="mt-6 flex items-start gap-3 p-4 bg-slate-50 rounded-xl">
